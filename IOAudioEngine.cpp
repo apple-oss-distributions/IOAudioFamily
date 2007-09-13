@@ -343,6 +343,18 @@ bool IOAudioEngine::init(OSDictionary *properties)
         return false;
     }
 
+	OSDictionary * pDict =  dictionaryWithProperties();
+	if (NULL != pDict)
+	{
+		audioDebugIOLog(3, "IOAudioEngine[%p]::init  replacing dictionary ", this);
+		setPropertyTable(pDict); // <rdar://problem/4676828> M44: Audio: Corrupting an object in the registry
+	}
+	else
+	{
+		IOLog("IOAudioEngine[%p]::init  no dictionary \n ", this);
+		
+		
+	}
     duringStartup = true;
 
     sampleRate.whole = 0;
@@ -505,6 +517,7 @@ bool IOAudioEngine::start(IOService *provider, IOAudioDevice *device)
         return false;
     }
 
+	
     setAudioDevice(device);
     
     workLoop = audioDevice->getWorkLoop();
@@ -636,16 +649,16 @@ OSString *IOAudioEngine::getGlobalUniqueID()
 		bzero(uniqueIDStr, uniqueIDSize);
 
         if (className) {
-            sprintf(uniqueIDStr, "%s:", className);
+            snprintf(uniqueIDStr, uniqueIDSize, "%s:", className);
         }
         
         if (location) {
-            strcat(uniqueIDStr, location);
-            strcat(uniqueIDStr, ":");
+            strncat(uniqueIDStr, location, uniqueIDSize);
+            strncat(uniqueIDStr, ":", uniqueIDSize);
         }
         
         if (localID) {
-            strcat(uniqueIDStr, localID->getCStringNoCopy());
+            strncat(uniqueIDStr, localID->getCStringNoCopy(), uniqueIDSize);
             localID->release();
         }
         
@@ -660,9 +673,10 @@ OSString *IOAudioEngine::getGlobalUniqueID()
 OSString *IOAudioEngine::getLocalUniqueID()
 {
     OSString *localUniqueID;
-    char localUniqueIDStr[(sizeof(UInt32)*2)+1];
-    
-    sprintf(localUniqueIDStr, "%lx", index);
+	int strSize = (sizeof(UInt32)*2)+1;
+    char localUniqueIDStr[strSize];
+   
+    snprintf(localUniqueIDStr, strSize, "%lx", index);
     
     localUniqueID = OSString::withCString(localUniqueIDStr);
     
@@ -1724,7 +1738,8 @@ AbsoluteTime IOAudioEngine::getTimerInterval()
 
 		outputIterator = OSCollectionIterator::withCollection(outputStreams);
 
-		if (outputIterator) {
+		if (outputIterator) 
+		{
 			while (outputStream = (IOAudioStream *)outputIterator->getNextObject()) {
 				bufferSize = outputStream->getSampleBufferSize();
 				if ((bufferSize / numErasesPerBuffer) > 65536) {
@@ -1734,6 +1749,7 @@ AbsoluteTime IOAudioEngine::getTimerInterval()
 					}
 				}
 			}
+			outputIterator->release();
 		}
 		nanoseconds_to_absolutetime(((UInt64)NSEC_PER_SEC * (UInt64)getNumSampleFramesPerBuffer() / (UInt64)currentRate->whole / (UInt64)numErasesPerBuffer), &interval);
     }
