@@ -151,7 +151,11 @@ bool IOAudioStream::validateFormat(IOAudioStreamFormat *streamFormat, IOAudioStr
 					}
 				}
 				if (passSRCheck) {
-					streamFormat->fDriverTag = availableFormats[formatIndex].format.fDriverTag;
+					// <rdar://10957396> Only update the tag if required
+					if ( streamFormat->fDriverTag != availableFormats[formatIndex].format.fDriverTag ) {
+						streamFormat->fDriverTag = availableFormats[formatIndex].format.fDriverTag;
+					}
+
 	//				streamFormat->fIsMixable = availableFormats[formatIndex].format.fIsMixable;
 					if (formatDesc) {
 						memcpy(formatDesc, &availableFormats[formatIndex], sizeof(IOAudioStreamFormatDesc));
@@ -187,7 +191,7 @@ IOReturn IOAudioStream::setFormat(const IOAudioStreamFormat *streamFormat, const
 		} else {
 			validFormatExtension = *formatExtension;
 		}
-        if (formatDict = createDictionaryFromFormat(streamFormat, &validFormatExtension)) {
+        if ( (formatDict = createDictionaryFromFormat(streamFormat, &validFormatExtension)) ) {
             result = setFormat(streamFormat, &validFormatExtension, formatDict, callDriver);
             formatDict->release();
         } else {
@@ -287,7 +291,7 @@ IOReturn IOAudioStream::setFormat(const IOAudioStreamFormat *streamFormat, const
 					goto Done;
 				}
 				
-				while (userClient = (IOAudioEngineUserClient *)clientIterator->getNextObject()) {
+				while ( (userClient = (IOAudioEngineUserClient *)clientIterator->getNextObject()) ) {
 					userClient->lockBuffers();
 				}
 				
@@ -370,7 +374,7 @@ IOReturn IOAudioStream::setFormat(const IOAudioStreamFormat *streamFormat, const
 				assert(userClientsToLock);
 				clientIterator = OSCollectionIterator::withCollection(userClientsToLock);
 				if (clientIterator) {
-					while (userClient = (IOAudioEngineUserClient *)clientIterator->getNextObject()) {
+					while ( (userClient = (IOAudioEngineUserClient *)clientIterator->getNextObject()) ) {
 						userClient->unlockBuffers();
 					}
 					clientIterator->release();
@@ -901,7 +905,7 @@ IOReturn IOAudioStream::setProperties(OSObject *properties)
 
         iterator = OSCollectionIterator::withCollection(props);
         if (iterator) {
-            while (iteratorKey = iterator->getNextObject()) {
+            while ( (iteratorKey = iterator->getNextObject()) ) {
                 OSSymbol *key;
 
                 key = OSDynamicCast(OSSymbol, iteratorKey);
@@ -2010,7 +2014,7 @@ void IOAudioStream::removeDefaultAudioControls()
             if (controlIterator) {
                 IOAudioControl *control;
                 
-                while (control = (IOAudioControl *)controlIterator->getNextObject()) {
+                while ( (control = (IOAudioControl *)controlIterator->getNextObject()) ) {
                     if (control->getProvider() == this) {
                         control->terminate();
                     } else {
