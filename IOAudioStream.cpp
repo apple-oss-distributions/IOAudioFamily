@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998-2010 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 1998-2013 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  *
@@ -276,6 +276,8 @@ IOReturn IOAudioStream::setFormat(const IOAudioStreamFormat *streamFormat, const
 				IOAudioClientBuffer *clientBuf;
 				IOAudioEngineUserClient *userClient;
 				
+				lockStreamForIO();										// <rdar://13186726> 
+				
 				clientBuf = userClientList;
 				while (clientBuf) {
 					assert(clientBuf->userClient);
@@ -283,6 +285,8 @@ IOReturn IOAudioStream::setFormat(const IOAudioStreamFormat *streamFormat, const
 					userClientsToLock->setObject(clientBuf->userClient);
 					clientBuf = clientBuf->nextClient;
 				}
+				
+				unlockStreamForIO();									// <rdar://13186726> 
 			
 				clientIterator = OSCollectionIterator::withCollection(userClientsToLock);
 				if (!clientIterator) {
@@ -1188,9 +1192,26 @@ IOReturn IOAudioStream::addClient(IOAudioClientBuffer *clientBuffer)
 
         lockStreamForIO();
         
-        // Make sure this buffer is not in the list
+        // <rdar://11731381> Make sure this buffer is not in the list
+		bool bufferInList = false;
         if ((clientBuffer->nextClip == NULL) && (clientBuffer->previousClip == NULL) && (clientBuffer != clientBufferListStart) && (clientBuffer->nextClient == NULL) && (clientBuffer != userClientList)) {
             
+			// <rdar://11731381> Make sure that the clientBuffer is not at the end of the list.
+			IOAudioClientBuffer *tmpClientBuffer = userClientList;
+			while (tmpClientBuffer && (tmpClientBuffer != clientBuffer)) {
+				tmpClientBuffer = tmpClientBuffer->nextClient;
+			}
+			if (tmpClientBuffer) {
+				audioDebugIOLog(3, "   clientBuffer %p is already in the list.\n", tmpClientBuffer);
+				bufferInList = true;
+			}
+		}
+		else {
+			bufferInList = true;
+		}
+		
+		if (!bufferInList) {	// <rdar://11731381>
+			
             // It's OK to allow a new client if this is a mixable format
             // or if its not mixable but we don't have any clients
             // or if we are an input stream
