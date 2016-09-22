@@ -34,7 +34,9 @@
 #include <IOKit/IOCommandGate.h>
 #include <IOKit/IOKitKeys.h>
 
-#include <vm/vm_kern.h>
+#include <sys/random.h>
+
+#include <AssertMacros.h>
 
 // <rdar://8518215>
 enum
@@ -193,7 +195,7 @@ void IOAudioClientBufferSet::setWatchdogTimeout(AbsoluteTime *timeout)
 
     if (watchdogThreadCall == NULL) {
         // allocate it here
-        IOLog("IOAudioClientBufferSet[%p]::setWatchdogTimeout() - no thread call.\n", this);
+        IOLog("IOAudioClientBufferSet::setWatchdogTimeout() - no thread call.\n");
     }
     
     assert(watchdogThreadCall);
@@ -248,25 +250,13 @@ void IOAudioClientBufferSet::watchdogTimerFired(IOAudioClientBufferSet *clientBu
 		AbsoluteTime now;
 		clock_get_uptime(&now);
 		
-#ifdef __LP64__
-		audioDebugIOLog(3, "+ IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%llu)(%llu)(%lx,%lx)\n", 
+		audioDebugIOLog(3, "+ IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%llu)(%llu)(%lx,%lx)\n",
 							clientBufferSet, 
 							(long int)generationCount, 
 							now, 
 							clientBufferSet->outputTimeout, 
 							(long unsigned int)clientBufferSet->nextOutputPosition.fLoopCount, 
 							(long unsigned int)clientBufferSet->nextOutputPosition.fSampleFrame);
-#else	/* __LP64__ */
-		audioDebugIOLog(3, "+ IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%lx,%lx)(%lx,%lx)(%lx,%lx)\n", 
-							clientBufferSet, 
-							(long int)generationCount, 
-							now.hi, 
-							now.lo, 
-							clientBufferSet->outputTimeout.hi, 
-							clientBufferSet->outputTimeout.lo, 
-							clientBufferSet->nextOutputPosition.fLoopCount, 
-							clientBufferSet->nextOutputPosition.fSampleFrame);
-#endif	/* __LP64__ */
 		
 #endif /* DEBUG */
 
@@ -288,25 +278,13 @@ void IOAudioClientBufferSet::watchdogTimerFired(IOAudioClientBufferSet *clientBu
 		// clientBufferSet->release code was down here...
 	
 #ifdef DEBUG
-#ifdef __LP64__
-		audioDebugIOLog(3, "- IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%llu)(%llu)(%lx,%lx)\n", 
+		audioDebugIOLog(3, "- IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%llu)(%llu)(%lx,%lx)\n",
 							clientBufferSet, 
 							(long int)generationCount, 
 							now, 
 							clientBufferSet->outputTimeout, 
 							(long unsigned int)clientBufferSet->nextOutputPosition.fLoopCount, 
 							(long unsigned int)clientBufferSet->nextOutputPosition.fSampleFrame);
-#else	/* __LP64__ */
-		audioDebugIOLog(3, "- IOAudioClientBufferSet[%p]::watchdogTimerFired(%ld):(%lx,%lx)(%lx,%lx)(%lx,%lx)\n", 
-							clientBufferSet, 
-							(long int)generationCount, 
-							now.hi, 
-							now.lo, 
-							clientBufferSet->outputTimeout.hi, 
-							clientBufferSet->outputTimeout.lo, 
-							clientBufferSet->nextOutputPosition.fLoopCount, 
-							clientBufferSet->nextOutputPosition.fSampleFrame);
-#endif	/* __LP64__ */
 #endif /* DEBUG */
 	} else {
 		IOLog ("IOAudioClientBufferSet::watchdogTimerFired assert (clientBufferSet == NULL) failed\n");
@@ -402,45 +380,12 @@ bool IOAudioEngineUserClient::initWithAudioEngine(IOAudioEngine *engine, task_t 
 							reserved->classicMode = 0;
 							reserved->commandGateStatus = kCommandGateStatus_Normal;	// <rdar://8518215>
 							reserved->commandGateUsage = 0;								// <rdar://8518215>
-
+							
+							read_random(&reserved->connectionID, sizeof(reserved->connectionID)); // <rdar://22327973>
+							audioDebugIOLog(3, "  ConnectionID:0x%x\n", reserved->connectionID);
+                            
 							workLoop->addEventSource(commandGate);
 							
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].object = this;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].func = (IOMethod) &IOAudioEngineUserClient::registerBuffer64;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].count0 = 4;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].count1 = 0;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].object = this;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].func = (IOMethod) &IOAudioEngineUserClient::unregisterBuffer64;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].count0 = 2;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].count1 = 0;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallGetConnectionID].object = this;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].func = (IOMethod) &IOAudioEngineUserClient::getConnectionID;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].count0 = 0;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].count1 = 1;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallStart].object = this;
-							reserved->methods[kIOAudioEngineCallStart].func = (IOMethod) &IOAudioEngineUserClient::clientStart;
-							reserved->methods[kIOAudioEngineCallStart].count0 = 0;
-							reserved->methods[kIOAudioEngineCallStart].count1 = 0;
-							reserved->methods[kIOAudioEngineCallStart].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallStop].object = this;
-							reserved->methods[kIOAudioEngineCallStop].func = (IOMethod) &IOAudioEngineUserClient::clientStop;
-							reserved->methods[kIOAudioEngineCallStop].count0 = 0;
-							reserved->methods[kIOAudioEngineCallStop].count1 = 0;
-							reserved->methods[kIOAudioEngineCallStop].flags = kIOUCScalarIScalarO;
-
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].object = this;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].func = (IOMethod) &IOAudioEngineUserClient::getNearestStartTime;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].count0 = 3;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].count1 = 0;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].flags = kIOUCScalarIScalarO;
-
 							trap.object = this;
 							trap.func = (IOTrap) &IOAudioEngineUserClient::performClientIO;
 							result = true;
@@ -468,6 +413,8 @@ IOReturn IOAudioEngineUserClient::safeRegisterClientBuffer(UInt32 audioStreamInd
 	
 	audioDebugIOLog(3, "+ IOAudioEngineUserClient::safeRegisterClientBuffer32 %p \n", sourceBuffer); 
 	
+	require_action_string(audioEngine != NULL, Exit, result = kIOReturnError, "audioEngine is NULL");
+
 	audioStream = audioEngine->getStreamForID(audioStreamIndex);
 	if (!audioStream)
 	{
@@ -478,6 +425,7 @@ IOReturn IOAudioEngineUserClient::safeRegisterClientBuffer(UInt32 audioStreamInd
 		result = registerClientBuffer(audioStream, sourceBuffer, bufSizeInBytes, bufferSetID);
 	}
 	
+ Exit:
 	audioDebugIOLog(3, "- IOAudioEngineUserClient::safeRegisterClientBuffer32 %p returns 0x%lX\n", sourceBuffer, (long unsigned int)result ); 
 	return result;
 	
@@ -491,14 +439,17 @@ IOReturn IOAudioEngineUserClient::safeRegisterClientBuffer64(UInt32 audioStreamI
 	IOAudioStream *			audioStream;
 	audioDebugIOLog(3, "+ IOAudioEngineUserClient::safeRegisterClientBuffer64 %p \n", sourceBuffer); 
 	
+	require_action_string(audioEngine != NULL, Exit, retVal = kIOReturnError, "audioEngine is NULL");
+
 	audioStream = audioEngine->getStreamForID(audioStreamIndex);
 	if (!audioStream) {
-		audioDebugIOLog(3, "  no stream associated with audioStreamIndex 0x%lx \n", (long unsigned int)audioStreamIndex); 
+		audioDebugIOLog(3, "  no stream associated with audioStreamIndex 0x%lx \n", (long unsigned int)audioStreamIndex);
 	}
 	else
 	{
 		retVal = registerClientBuffer64(audioStream, * sourceBuffer, bufSizeInBytes, bufferSetID);
 	}
+ Exit:
 	audioDebugIOLog(3, "- IOAudioEngineUserClient::safeRegisterClientBuffer64  returns 0x%lX\n", (long unsigned int)retVal  ); 
 	return retVal;
 }
@@ -556,7 +507,7 @@ IOReturn IOAudioEngineUserClient::registerClientParameterBuffer (void  * paramBu
 			
 			if (extendedInfo->mAudioClientBufferExtended32.paramBufferMap == NULL) 
 			{
-				IOLog("IOAudioEngineUserClient<0x%p>::registerClientParameterBuffer() - error mapping memory.\n", this);
+				IOLog("IOAudioEngineUserClient::registerClientParameterBuffer() - error mapping memory.\n");
 				result = kIOReturnVMError;
 				goto Exit;
 			}
@@ -674,11 +625,7 @@ IOReturn IOAudioEngineUserClient::getNearestStartTimeAction(OSObject *owner, voi
         
         if (userClient) {
 			
-#if __LP64__
-			UInt32 tempBoolArgument = (UInt64)arg4; 
-#else
-			UInt32 tempBoolArgument = (UInt32)arg4; 
-#endif
+			UInt32 tempBoolArgument = (UInt64)arg4;
 
             result = userClient->getClientNearestStartTime((IOAudioStream *)arg1, (IOAudioTimeStamp *)arg2, tempBoolArgument);
         }
@@ -689,7 +636,7 @@ IOReturn IOAudioEngineUserClient::getNearestStartTimeAction(OSObject *owner, voi
 
 IOReturn IOAudioEngineUserClient::getClientNearestStartTime(IOAudioStream *audioStream, IOAudioTimeStamp *ioTimeStamp, UInt32 isInput)
 {
-    IOReturn result = kIOReturnSuccess;
+    IOReturn result = kIOReturnError;
 
     if (audioEngine && !isInactive()) {
 		result = audioEngine->getNearestStartTime(audioStream, ioTimeStamp, isInput);
@@ -776,45 +723,12 @@ bool IOAudioEngineUserClient::initWithAudioEngine(IOAudioEngine *engine, task_t 
 							reserved->classicMode = 0;
 							reserved->commandGateStatus = kCommandGateStatus_Normal;	// <rdar://8518215>
 							reserved->commandGateUsage = 0;								// <rdar://8518215>
-
+							
+							read_random(&reserved->connectionID, sizeof(reserved->connectionID)); // <rdar://22327973>
+							audioDebugIOLog(3, "  ConnectionID:0x%x\n", reserved->connectionID);
+                            
 							workLoop->addEventSource(commandGate);
 							
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].object = this;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].func = (IOMethod) &IOAudioEngineUserClient::registerBuffer64;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].count0 = 4;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].count1 = 0;
-							reserved->methods[kIOAudioEngineCallRegisterClientBuffer].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].object = this;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].func = (IOMethod) &IOAudioEngineUserClient::unregisterBuffer64;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].count0 = 2;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].count1 = 0;
-							reserved->methods[kIOAudioEngineCallUnregisterClientBuffer].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallGetConnectionID].object = this;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].func = (IOMethod) &IOAudioEngineUserClient::getConnectionID;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].count0 = 0;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].count1 = 1;
-							reserved->methods[kIOAudioEngineCallGetConnectionID].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallStart].object = this;
-							reserved->methods[kIOAudioEngineCallStart].func = (IOMethod) &IOAudioEngineUserClient::clientStart;
-							reserved->methods[kIOAudioEngineCallStart].count0 = 0;
-							reserved->methods[kIOAudioEngineCallStart].count1 = 0;
-							reserved->methods[kIOAudioEngineCallStart].flags = kIOUCScalarIScalarO;
-							
-							reserved->methods[kIOAudioEngineCallStop].object = this;
-							reserved->methods[kIOAudioEngineCallStop].func = (IOMethod) &IOAudioEngineUserClient::clientStop;
-							reserved->methods[kIOAudioEngineCallStop].count0 = 0;
-							reserved->methods[kIOAudioEngineCallStop].count1 = 0;
-							reserved->methods[kIOAudioEngineCallStop].flags = kIOUCScalarIScalarO;
-
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].object = this;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].func = (IOMethod) &IOAudioEngineUserClient::getNearestStartTime;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].count0 = 3;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].count1 = 0;
-							reserved->methods[kIOAudioEngineCallGetNearestStartTime].flags = kIOUCScalarIScalarO;
-
 							trap.object = this;
 							trap.func = (IOTrap) &IOAudioEngineUserClient::performClientIO;
 							result = true;
@@ -1109,6 +1023,7 @@ IOReturn IOAudioEngineUserClient::clientMemoryForType(UInt32 type, UInt32 *flags
     audioDebugIOLog(3, "+ IOAudioEngineUserClient[%p]::clientMemoryForType(0x%lx, 0x%lx, %p)\n", this, (long unsigned int)type, (long unsigned int)*flags, memory);
 
 	assert(audioEngine);
+	require_action_string(audioEngine != NULL, Exit, result = kIOReturnError, "audioEngine is NULL");
 
     switch(type) {
         case kIOAudioStatusBuffer:
@@ -1133,19 +1048,14 @@ IOReturn IOAudioEngineUserClient::clientMemoryForType(UInt32 type, UInt32 *flags
 		result = kIOReturnError;
 	}
 
+ Exit:
     audioDebugIOLog(3, "- IOAudioEngineUserClient[%p]::clientMemoryForType(0x%lx, 0x%lx, %p) returns 0x%lX\n", this, (long unsigned int)type, (long unsigned int)*flags, memory, (long unsigned int)result );
     return result;
 }
 
 IOExternalMethod *IOAudioEngineUserClient::getExternalMethodForIndex(UInt32 index)
 {
-    IOExternalMethod *method = 0;
-
-    if (index < kIOAudioEngineNumCalls) {
-        method = &reserved->methods[index];
-    }
-
-    return method;
+    return NULL;
 }
 
 IOExternalTrap *IOAudioEngineUserClient::getExternalTrapForIndex( UInt32 index )
@@ -1182,7 +1092,7 @@ IOReturn IOAudioEngineUserClient::registerNotificationPort(mach_port_t port, UIn
             
             break;
         default:
-            IOLog("IOAudioEngineUserClient[%p]::registerNotificationPort() - ERROR: invalid notification type specified - no notifications will be sent.\n", this);
+            IOLog("IOAudioEngineUserClient::registerNotificationPort() - ERROR: invalid notification type specified - no notifications will be sent.\n");
             result = kIOReturnBadArgument;
             break;
     }
@@ -1224,11 +1134,7 @@ IOReturn IOAudioEngineUserClient::registerNotificationAction(OSObject *owner, vo
         IOAudioEngineUserClient *userClient = OSDynamicCast(IOAudioEngineUserClient, owner);
         
         if (userClient) {
-#if __LP64__
 			UInt64	refCon = (UInt64) arg2;
-#else
-			UInt32	refCon = (UInt32) arg2;
-#endif
 
             result = userClient->registerNotification((mach_port_t)arg1, refCon);
         }
@@ -1286,7 +1192,15 @@ IOReturn IOAudioEngineUserClient::externalMethod ( uint32_t selector, IOExternal
 					selector, arguments->scalarInput[0], arguments->scalarInput[1], arguments->scalarInput[2], arguments->scalarInput[3]);
     audioDebugIOLog(3, "  scalarInputCount=0x%x  structureInputSize 0x%x, scalarOutputCount 0x%x, structureOutputSize 0x%x \n", 
 					arguments->scalarInputCount, arguments->structureInputSize, arguments->scalarOutputCount, arguments->structureOutputSize );
-	
+
+	// require entitlement for all external methods
+	OSObject *entitlement = copyClientEntitlement(current_task(), kDriverHelper_DriverHostEntitlement);
+	bool entitled = false;
+	if ((entitlement != NULL) && (entitlement == kOSBooleanTrue)) {
+		entitled = true;
+	}
+	require_action_string(entitled, Exit, result = kIOReturnNotPrivileged, "not entitled");
+
 	// Dispatch the method call
 	switch (selector)
 	{
@@ -1295,11 +1209,13 @@ IOReturn IOAudioEngineUserClient::externalMethod ( uint32_t selector, IOExternal
 		{
 			if ( arguments->scalarInputCount >= 4 )		//	<rdar://9204853>
 			{
-			result = registerBuffer64((IOAudioStream *)arguments->scalarInput[0], (mach_vm_address_t)arguments->scalarInput[1], (UInt32)arguments->scalarInput[2], (UInt32)arguments->scalarInput[3] );
-		}
+				result = registerBuffer64((IOAudioStream *)arguments->scalarInput[0], (mach_vm_address_t)arguments->scalarInput[1],
+						(UInt32)arguments->scalarInput[2], (UInt32)arguments->scalarInput[3] );
+			}
 			else
 			{
-				audioDebugIOLog(3, "  kIOAudioEngineCallRegisterClientBuffer: invalid input argument count %d. Need at least 4.\n", arguments->scalarInputCount);
+				audioDebugIOLog(3, "  kIOAudioEngineCallRegisterClientBuffer: invalid input argument count %d. Need at least 4.\n",
+					arguments->scalarInputCount);
 			}
 		}
 		break;
@@ -1308,17 +1224,57 @@ IOReturn IOAudioEngineUserClient::externalMethod ( uint32_t selector, IOExternal
 		{
 			if ( arguments->scalarInputCount >= 2 )		//	<rdar://9204853>
 			{
-			result = unregisterBuffer64((mach_vm_address_t)arguments->scalarInput[0], (UInt32)arguments->scalarInput[1] );
-		}
+				result = unregisterBuffer64((mach_vm_address_t)arguments->scalarInput[0], (UInt32)arguments->scalarInput[1] );
+			}
 			else
 			{
-				audioDebugIOLog(3, "  kIOAudioEngineCallUnregisterClientBuffer: invalid input argument count %d. Need at least 2.\n", arguments->scalarInputCount);
+				audioDebugIOLog(3, "  kIOAudioEngineCallUnregisterClientBuffer: invalid input argument count %d. Need at least 2.\n",
+					arguments->scalarInputCount);
 			}
 		}
-		break;	default:
+		break;
+	case kIOAudioEngineCallGetConnectionID:
+		if (arguments != 0)
+		{
+			if ( arguments->scalarOutputCount >= 1 )
+			{
+				result = getConnectionID((uint32_t *) &arguments->scalarOutput[0]);
+			}
+			else
+			{
+				audioDebugIOLog(3, "  kIOAudioEngineCallGetConnectionID: invalid output argument count %d. Need at least 1.\n",
+					arguments->scalarOutputCount);
+			}
+		}
+		break;
+	case kIOAudioEngineCallStart:
+		result = clientStart();
+		break;
+	case kIOAudioEngineCallStop:
+		result = clientStop();
+		break;
+	case kIOAudioEngineCallGetNearestStartTime:
+		if (arguments != 0)
+		{
+			if ( arguments->scalarInputCount >= 3 )
+			{
+				result = getNearestStartTime((IOAudioStream *)arguments->scalarInput[0], (IOAudioTimeStamp *)arguments->scalarInput[1],
+                                                (UInt32)arguments->scalarInput[2]);
+			}
+			else
+			{
+				audioDebugIOLog(3, "  kIOAudioEngineCallGetNearestStartTime: invalid input argument count %d. Need at least 3.\n",
+					arguments->scalarInputCount);
+			}
+		}
+		break;
+	default:
 		result = super::externalMethod(selector, arguments, dispatch, target, reference );
 		break;
 	}
+
+ Exit:
+
 	audioDebugIOLog(3, "- IOAudioEngineUserClient::externalMethod returns 0x%lX\n", (long unsigned int)result );
 	return result;
 }
@@ -1400,15 +1356,9 @@ IOReturn IOAudioEngineUserClient::registerBufferAction(OSObject *owner, void *ar
         IOAudioEngineUserClient *userClient = OSDynamicCast(IOAudioEngineUserClient, owner);
         
         if (userClient) {
-#if __LP64__
 			UInt32 bufSizeInBytes	= (UInt32)((UInt64)arg3 & 0x00000000FFFFFFFFLLU);
 			UInt32 bufferSetID		= (UInt32)((UInt64)arg4 & 0x00000000FFFFFFFFLLU);
 			UInt32 audioStreamIndex	= (UInt32)((UInt64)arg1 & 0x00000000FFFFFFFFLLU);
-#else
-			UInt32 bufSizeInBytes	= (UInt32) arg3;
-			UInt32 bufferSetID		= (UInt32) arg4;
-			UInt32 audioStreamIndex = (UInt32) arg1;			
-#endif
 			
 			result = userClient->safeRegisterClientBuffer64( audioStreamIndex, ( mach_vm_address_t * ) arg2, bufSizeInBytes, bufferSetID);
         }
@@ -1447,11 +1397,7 @@ IOReturn IOAudioEngineUserClient::unregisterBufferAction(OSObject *owner, void *
         IOAudioEngineUserClient *userClient = OSDynamicCast(IOAudioEngineUserClient, owner);
         
         if (userClient) {
-#if __LP64__		
 			UInt32 bufferSetID =  (UInt32)((UInt64)arg2 & 0x00000000FFFFFFFFLLU);
-#else
-			UInt32 bufferSetID =  (UInt32) arg2;
-#endif
             result = userClient->unregisterClientBuffer64( ( mach_vm_address_t * )arg1, bufferSetID);
         }
     }
@@ -1478,7 +1424,9 @@ IOReturn IOAudioEngineUserClient::registerClientBuffer64(IOAudioStream *audioStr
         IOAudioClientBufferSet *clientBufferSet;
         IOAudioClientBuffer64 **clientBufferList;
         
-        if (!sourceBuffer || !audioStream || (bufSizeInBytes == 0) ) 
+	// rdar://problem/25156927
+	//   ensure bufSizeInBytes is minimally large enough for the IOAudioBufferDataDescriptor metadata
+        if (!sourceBuffer || !audioStream || (bufSizeInBytes < offsetof(IOAudioBufferDataDescriptor, fData)) )
 		{
 			audioDebugIOLog(3, "  bad argument\n");
            return kIOReturnBadArgument;
@@ -1566,7 +1514,7 @@ IOReturn IOAudioEngineUserClient::registerClientBuffer64(IOAudioStream *audioStr
 		
         if (clientBuffer->mAudioClientBuffer32.sourceBufferMap == NULL) 
 		{
-            IOLog("IOAudioEngineUserClient<0x%p>::registerClientBuffer64() - error mapping memory.\n", this);
+            IOLog("IOAudioEngineUserClient::registerClientBuffer64() - error mapping memory.\n");
             result = kIOReturnVMError;
             goto Exit;
         }
@@ -1577,6 +1525,36 @@ IOReturn IOAudioEngineUserClient::registerClientBuffer64(IOAudioStream *audioStr
             result = kIOReturnVMError;
             goto Exit;
         }
+
+	// rdar://problem/25156927
+	//   validate the IOAudioBufferDataDescriptor
+	do {
+		IOAudioBufferDataDescriptor *sourceDesc = (IOAudioBufferDataDescriptor *)(clientBuffer->mAudioClientBuffer32.sourceBuffer);
+
+		if (sourceDesc->fActualDataByteSize == 0 && sourceDesc->fActualNumSampleFrames == 0 &&
+		    sourceDesc->fTotalDataByteSize == 0  && sourceDesc->fNominalDataByteSize == 0) {
+			break;
+		}
+
+		UInt64 sampleSizeInBytes = (streamFormat->fIsMixable) ? kIOAudioEngineDefaultMixBufferSampleSize : (streamFormat->fBitWidth / 8);
+		UInt64 frameSizeInBytes = sampleSizeInBytes * streamFormat->fNumChannels;
+		UInt64 actualFramesByteSize = frameSizeInBytes * sourceDesc->fActualNumSampleFrames;
+		bool overflow = (frameSizeInBytes > UINT32_MAX) || (actualFramesByteSize > UINT32_MAX);
+
+		if ((overflow == false) &&
+		    (sourceDesc->fTotalDataByteSize == bufSizeInBytes) &&
+		    (sourceDesc->fActualDataByteSize <= (bufSizeInBytes - offsetof(IOAudioBufferDataDescriptor, fData))) &&
+		    (sourceDesc->fNominalDataByteSize <= (bufSizeInBytes - offsetof(IOAudioBufferDataDescriptor, fData))) &&
+		    (sourceDesc->fActualDataByteSize >= actualFramesByteSize)) {
+			break;
+		}
+
+		audioDebugIOLog(3, "  bad argument\n");
+		result = kIOReturnBadArgument;
+		goto Exit;
+
+	} while (0);
+
 		// offset past per buffer info
         audioDebugIOLog(3, "  clientBuffer->mAudioClientBuffer32.sourceBuffer before offset: %p, offset size: %ld\n", clientBuffer->mAudioClientBuffer32.sourceBuffer, offsetof(IOAudioBufferDataDescriptor, fData));
 		clientBuffer->mAudioClientBuffer32.bufferDataDescriptor = (IOAudioBufferDataDescriptor *)(clientBuffer->mAudioClientBuffer32.sourceBuffer);
@@ -1878,6 +1856,7 @@ IOReturn IOAudioEngineUserClient::performClientIO(UInt32 firstSampleFrame, UInt3
 						(long unsigned int)sampleIntervalHi, 
 						(long unsigned int)sampleIntervalLo ); 	
     assert(audioEngine);
+    require_action_string(audioEngine != NULL, Exit, result = kIOReturnError, "audioEngine is NULL");
     
     if (!isInactive()) 
 	{
@@ -1924,6 +1903,7 @@ IOReturn IOAudioEngineUserClient::performClientIO(UInt32 firstSampleFrame, UInt3
         result = kIOReturnNoDevice;
     }
     
+ Exit:
 	audioDebugIOLog(7, "- IOAudioEngineUserClient::performClientIO result = 0x%lX\n", (long unsigned int)result);		// <rdar://9725460>
     return result;
 }
@@ -1984,18 +1964,14 @@ IOReturn IOAudioEngineUserClient::performClientOutput(UInt32 firstSampleFrame, U
 					(long int)sampleIntervalLo );
     
 	assert(audioEngine != NULL);
+	require_action_string(audioEngine != NULL, Exit, result = kIOReturnError, "audioEngine is NULL");
 
     // <rdar://10145205,15277619> Sanity check the loop count
 	if ( ( loopCount >= audioEngine->status->fCurrentLoopCount ) &&
          ( loopCount <= audioEngine->status->fCurrentLoopCount + kLoopCountMaximumDifference ) )
     {
-#if __LP64__
 		UInt64 tempHI = sampleIntervalHi;
 		bufferSet->sampleInterval = tempHI << 32 | sampleIntervalLo;
-#else
-		bufferSet->sampleInterval.hi = sampleIntervalHi;
-		bufferSet->sampleInterval.lo = sampleIntervalLo;
-#endif
     
         if (bufferSet->outputBufferList != NULL) {
             IOAudioEnginePosition			outputEndingPosition;
@@ -2325,7 +2301,7 @@ void IOAudioEngineUserClient::performWatchdogOutput(IOAudioClientBufferSet *clie
 
     lockBuffers();
     
-    if (!isInactive() && isOnline()) {
+    if (audioEngine && !isInactive() && isOnline()) {
         if (clientBufferSet->timerPending) {
             // If the generation count of the clientBufferSet is different than the
             // generation count passed in, then a new client IO was received just before
@@ -2450,13 +2426,12 @@ void IOAudioEngineUserClient::performWatchdogOutput(IOAudioClientBufferSet *clie
 
 IOReturn IOAudioEngineUserClient::getConnectionID(UInt32 *connectionID)
 {
-    audioDebugIOLog(3, "+-IOAudioEngineUserClient[%p]::getConnectionID(%p)\n", this, connectionID);
+	audioDebugIOLog(3, "+ IOAudioEngineUserClient[%p]::getConnectionID(%p)\n", this, connectionID);
 
-    vm_offset_t add;
-    vm_kernel_unslide_or_perm_external((vm_offset_t)this, &add);
-    *connectionID = (UInt32) (((UInt64) (add >> 8)) & 0x00000000FFFFFFFFLLU) ;
-
-    return kIOReturnSuccess;
+	*connectionID = reserved->connectionID;
+	audioDebugIOLog(3, "- IOAudioEngineUserClient[%p]::getConnectionID(%p) ConnectionID:0x%x\n", this, connectionID, *connectionID);
+    
+	return kIOReturnSuccess;
 }
 
 IOReturn IOAudioEngineUserClient::clientStart()
@@ -2732,7 +2707,7 @@ void IOAudioEngineUserClient::sendFormatChangeNotification(IOAudioStream *audioS
                 // Should also release the clientStreamRef here...
             }
         } else {
-            IOLog("IOAudioEngineUserClient[%p]::sendFormatChangeNotification() - ERROR - unable to export stream object for notification - notification not sent\n", this);
+            IOLog("IOAudioEngineUserClient::sendFormatChangeNotification() - ERROR - unable to export stream object for notification - notification not sent\n");
         }
     } else {
 		if (notificationMessage) {
